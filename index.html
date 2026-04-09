@@ -251,7 +251,7 @@ async function runQuery(id) {
     var res = await fetch(SNOWFLAKE_URL + AGENT_PATH, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + 'pat',
+        "Authorization": "Bearer " + PAT,
         "Content-Type": "application/json",
         "Accept": "application/json"
       },
