@@ -135,11 +135,9 @@ html, body {
 <body>
 <div class="wrapper" id="summaryText"></div>
 <script>
-var CACHE_TTL = 5 * 60 * 1000;
-
 var SNOWFLAKE_URL = "https://ARXPS-XPANSE.snowflakecomputing.com";
 var AGENT_PATH = "/api/v2/databases/XPS_AID/schemas/LOAN_BOARDING/agents/LB_PBI_AGENT:run";
-var PAT = 'eyJraWQiOiI5MzcyNjA2OTQ3MzU5NTQiLCJhbGciOiJFUzI1NiJ9.eyJwIjoiMTQzMDE0NjUwMTM6MTQzMDE0NjY3NTciLCJpc3MiOiJTRjoxMDQzIiwiZXhwIjoxNzgxMTE4MjQ3fQ.JbOjs_9FuHuB7AfTbAgtcQAgx_tAfm5JYI2UvF-X0ggKcBC0Hi3F12eS-wF31jobIcXYeZETIlstNPKybOAKjA',
+var PAT = 'eyJraWQiOiI5MzcyNjA2OTQ3MzU5NTQiLCJhbGciOiJFUzI1NiJ9.eyJwIjoiMTQzMDE0NjUwMTM6MTQzMDE0NjY3NTciLCJpc3MiOiJTRjoxMDQzIiwiZXhwIjoxNzgxMTE4MjQ3fQ.JbOjs_9FuHuB7AfTbAgtcQAgx_tAfm5JYI2UvF-X0ggKcBC0Hi3F12eS-wF31jobIcXYeZETIlstNPKybOAKjA'
 
 var QUERIES = {
   exec_summary:  { label: "Executive Summary",              question: "Executive Summary" },
@@ -184,40 +182,50 @@ if (startDate && endDate) {
 
 var SUMMARY_PROMPT = DATE_FILTER + " — Respond in EXACTLY this JSON format with no other text: {\"insights\": [\"insight 1\", \"insight 2\", \"insight 3\"], \"risks\": [\"risk 1\", \"risk 2\", \"risk 3\"], \"actions\": [\"action 1\", \"action 2\", \"action 3\"]}. IMPORTANT: Do NOT use markdown formatting like ** or * in your response. Each bullet must start with a plain label followed by a colon and a detailed explanation with specific numbers, percentages, and metrics from the data. Example: 'Turnaround Time: Fell to 92% from 99% SLA, with document processing delays increasing by 15% across the pipeline.' Each array must have exactly 3 detailed, metric-driven bullet points. No markdown, no SQL, no tables, no asterisks.";
 
-function getCacheKey(id) {
-  return 'cortex_' + id + '_' + section + '_' + startDate + '_' + endDate;
+var FINGERPRINT = queryId + '|' + section + '|' + startDate + '|' + endDate;
+var CACHE_HTML_KEY = 'lb_html_' + FINGERPRINT;
+var CACHE_FINGER_KEY = 'lb_finger';
+
+function datesChanged() {
+  var prev = sessionStorage.getItem(CACHE_FINGER_KEY);
+  return prev !== FINGERPRINT;
 }
 
-function getCached(id) {
+function hasCachedHTML() {
+  return sessionStorage.getItem(CACHE_HTML_KEY) !== null;
+}
+
+function getCachedHTML() {
+  return sessionStorage.getItem(CACHE_HTML_KEY);
+}
+
+function saveCachedHTML(html) {
   try {
-    var item = localStorage.getItem(getCacheKey(id));
-    if (!item) return null;
-    var parsed = JSON.parse(item);
-    if (Date.now() - parsed.timestamp > CACHE_TTL) {
-      localStorage.removeItem(getCacheKey(id));
-      return null;
+    var keys = [];
+    for (var i = 0; i < sessionStorage.length; i++) {
+      var k = sessionStorage.key(i);
+      if (k.indexOf('lb_html_') === 0) keys.push(k);
     }
-    return parsed.data;
-  } catch (e) {
-    return null;
-  }
-}
-
-function setCache(id, data) {
-  try {
-    localStorage.setItem(getCacheKey(id), JSON.stringify({
-      data: data,
-      timestamp: Date.now()
-    }));
+    for (var j = 0; j < keys.length; j++) {
+      sessionStorage.removeItem(keys[j]);
+    }
   } catch (e) {}
+  sessionStorage.setItem(CACHE_HTML_KEY, html);
+  sessionStorage.setItem(CACHE_FINGER_KEY, FINGERPRINT);
 }
 
 function init() {
-  if (queryId && QUERIES[queryId]) {
-    runQuery(queryId);
-  } else {
+  if (!queryId || !QUERIES[queryId]) {
     document.getElementById('summaryText').innerHTML = '<div class="error-text">No query configured.</div>';
+    return;
   }
+
+  if (!datesChanged() && hasCachedHTML()) {
+    document.getElementById('summaryText').innerHTML = getCachedHTML();
+    return;
+  }
+
+  runQuery(queryId);
 }
 
 function showSkeleton() {
@@ -236,13 +244,6 @@ function showSkeleton() {
 }
 
 async function runQuery(id) {
-  var cached = getCached(id);
-  if (cached) {
-    var html = extractSection(cached);
-    document.getElementById('summaryText').innerHTML = html || buildEmptyState();
-    return;
-  }
-
   var q = QUERIES[id];
   showSkeleton();
 
@@ -261,9 +262,10 @@ async function runQuery(id) {
     });
     if (!res.ok) throw new Error("API " + res.status);
     var data = await res.json();
-    setCache(id, data);
     var html = extractSection(data);
-    document.getElementById('summaryText').innerHTML = html || buildEmptyState();
+    if (!html) html = buildEmptyState();
+    saveCachedHTML(html);
+    document.getElementById('summaryText').innerHTML = html;
   } catch (err) {
     document.getElementById('summaryText').innerHTML =
       '<div class="error-text">' +
