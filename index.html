@@ -183,35 +183,37 @@ if (startDate && endDate) {
 var SUMMARY_PROMPT = DATE_FILTER + " — Respond in EXACTLY this JSON format with no other text: {\"insights\": [\"insight 1\", \"insight 2\", \"insight 3\"], \"risks\": [\"risk 1\", \"risk 2\", \"risk 3\"], \"actions\": [\"action 1\", \"action 2\", \"action 3\"]}. IMPORTANT: Do NOT use markdown formatting like ** or * in your response. Each bullet must start with a plain label followed by a colon and a detailed explanation with specific numbers, percentages, and metrics from the data. Example: 'Turnaround Time: Fell to 92% from 99% SLA, with document processing delays increasing by 15% across the pipeline.' Each array must have exactly 3 detailed, metric-driven bullet points. No markdown, no SQL, no tables, no asterisks.";
 
 var FINGERPRINT = queryId + '|' + section + '|' + startDate + '|' + endDate;
-var CACHE_HTML_KEY = 'lb_html_' + FINGERPRINT;
-var CACHE_FINGER_KEY = 'lb_finger';
 
-function datesChanged() {
-  var prev = sessionStorage.getItem(CACHE_FINGER_KEY);
-  return prev !== FINGERPRINT;
-}
-
-function hasCachedHTML() {
-  return sessionStorage.getItem(CACHE_HTML_KEY) !== null;
-}
-
-function getCachedHTML() {
-  return sessionStorage.getItem(CACHE_HTML_KEY);
-}
-
-function saveCachedHTML(html) {
+function getCache() {
   try {
-    var keys = [];
-    for (var i = 0; i < sessionStorage.length; i++) {
-      var k = sessionStorage.key(i);
-      if (k.indexOf('lb_html_') === 0) keys.push(k);
-    }
-    for (var j = 0; j < keys.length; j++) {
-      sessionStorage.removeItem(keys[j]);
-    }
+    var item = localStorage.getItem('lb_cache');
+    if (!item) return null;
+    var parsed = JSON.parse(item);
+    if (parsed.fingerprint === FINGERPRINT) return parsed.html;
+    localStorage.removeItem('lb_cache');
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setCache(html) {
+  try {
+    localStorage.setItem('lb_cache', JSON.stringify({
+      fingerprint: FINGERPRINT,
+      html: html
+    }));
   } catch (e) {}
-  sessionStorage.setItem(CACHE_HTML_KEY, html);
-  sessionStorage.setItem(CACHE_FINGER_KEY, FINGERPRINT);
+}
+
+function storageAvailable() {
+  try {
+    localStorage.setItem('lb_test', '1');
+    localStorage.removeItem('lb_test');
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function init() {
@@ -220,9 +222,12 @@ function init() {
     return;
   }
 
-  if (!datesChanged() && hasCachedHTML()) {
-    document.getElementById('summaryText').innerHTML = getCachedHTML();
-    return;
+  if (storageAvailable()) {
+    var cached = getCache();
+    if (cached) {
+      document.getElementById('summaryText').innerHTML = cached;
+      return;
+    }
   }
 
   runQuery(queryId);
@@ -264,7 +269,7 @@ async function runQuery(id) {
     var data = await res.json();
     var html = extractSection(data);
     if (!html) html = buildEmptyState();
-    saveCachedHTML(html);
+    setCache(html);
     document.getElementById('summaryText').innerHTML = html;
   } catch (err) {
     document.getElementById('summaryText').innerHTML =
