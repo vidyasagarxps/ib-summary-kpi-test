@@ -31,7 +31,6 @@ html, body {
 .card-insights { border-left: 5px solid #2563eb; background: #f0f5ff; }
 .card-risks { border-left: 5px solid #d97706; background: #fffbeb; }
 .card-actions { border-left: 5px solid #059669; background: #ecfdf5; }
-
 .card-header {
   display: flex;
   align-items: center;
@@ -49,7 +48,6 @@ html, body {
 .title-insights { color: #1d4ed8; }
 .title-risks { color: #b45309; }
 .title-actions { color: #047857; }
-
 .card-count {
   font-size: 15px;
   font-weight: 600;
@@ -60,7 +58,6 @@ html, body {
 .count-insights { background: #dbeafe; color: #1d4ed8; }
 .count-risks { background: #fef3c7; color: #b45309; }
 .count-actions { background: #d1fae5; color: #047857; }
-
 .card ul {
   list-style: none;
   padding: 0 22px 18px;
@@ -81,7 +78,6 @@ html, body {
   white-space: normal;
   text-align: justify;
 }
-
 .status-dot {
   width: 10px;
   height: 10px;
@@ -94,9 +90,7 @@ html, body {
 .dot-default-insights { background: #2563eb; }
 .dot-default-risks { background: #d97706; }
 .dot-default-actions { background: #059669; }
-
 .metric-highlight { font-weight: 700; color: #0f172a; }
-
 .skeleton {
   display: flex;
   flex-direction: column;
@@ -117,7 +111,6 @@ html, body {
 .skeleton-line:nth-child(5) { width: 80%; }
 .skeleton-line:nth-child(6) { width: 70%; }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
 .error-text {
   color: #dc2626;
   padding: 22px;
@@ -142,10 +135,32 @@ html, body {
 <body>
 <div class="wrapper" id="summaryText"></div>
 <script>
+var SW_READY = false;
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(reg) {
+    if (reg.active) {
+      SW_READY = true;
+      init();
+    } else {
+      var worker = reg.installing || reg.waiting;
+      worker.addEventListener('statechange', function() {
+        if (worker.state === 'activated') {
+          SW_READY = true;
+          init();
+        }
+      });
+    }
+  }).catch(function() {
+    init();
+  });
+} else {
+  init();
+}
+
 var SNOWFLAKE_URL = "https://ARXPS-XPANSE.snowflakecomputing.com";
 var AGENT_PATH = "/api/v2/databases/XPS_AID/schemas/LOAN_BOARDING/agents/LB_PBI_AGENT:run";
-var PAT = 'eyJraWQiOiI5MzcyNjA2OTQ3MzU5NTQiLCJhbGciOiJFUzI1NiJ9.eyJwIjoiMTQzMDE0NjUwMTM6MTQzMDE0NjY3NTciLCJpc3MiOiJTRjoxMDQzIiwiZXhwIjoxNzgxMTE4MjQ3fQ.JbOjs_9FuHuB7AfTbAgtcQAgx_tAfm5JYI2UvF-X0ggKcBC0Hi3F12eS-wF31jobIcXYeZETIlstNPKybOAKjA'
-
+var PAT = '';
 
 var QUERIES = {
   exec_summary:  { label: "Executive Summary",              question: "Executive Summary" },
@@ -158,35 +173,24 @@ var QUERIES = {
 
 var SECTION_CONFIG = {
   insights: {
-    title: 'Key Insights',
-    key: 'insights',
-    cardClass: 'card-insights',
-    titleClass: 'title-insights',
-    countClass: 'count-insights',
-    dotClass: 'dot-default-insights',
+    title: 'Key Insights', key: 'insights',
+    cardClass: 'card-insights', titleClass: 'title-insights',
+    countClass: 'count-insights', dotClass: 'dot-default-insights',
     icon: '<svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 1 4 12.7V17H8v-2.3A7 7 0 0 1 12 2z"/></svg>'
   },
   risks: {
-    title: 'Risks',
-    key: 'risks',
-    cardClass: 'card-risks',
-    titleClass: 'title-risks',
-    countClass: 'count-risks',
-    dotClass: 'dot-default-risks',
+    title: 'Risks', key: 'risks',
+    cardClass: 'card-risks', titleClass: 'title-risks',
+    countClass: 'count-risks', dotClass: 'dot-default-risks',
     icon: '<svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
   },
   actions: {
-    title: 'Actions',
-    key: 'actions',
-    cardClass: 'card-actions',
-    titleClass: 'title-actions',
-    countClass: 'count-actions',
-    dotClass: 'dot-default-actions',
+    title: 'Actions', key: 'actions',
+    cardClass: 'card-actions', titleClass: 'title-actions',
+    countClass: 'count-actions', dotClass: 'dot-default-actions',
     icon: '<svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'
   }
 };
-
-var CACHE_TTL = 30 * 60 * 1000;
 
 var params = new URLSearchParams(window.location.search);
 var queryId = params.get('q');
@@ -201,144 +205,17 @@ if (startDate && endDate) {
 
 var SUMMARY_PROMPT = DATE_FILTER + " — Respond in EXACTLY this JSON format with no other text: {\"insights\": [\"insight 1\", \"insight 2\", \"insight 3\"], \"risks\": [\"risk 1\", \"risk 2\", \"risk 3\"], \"actions\": [\"action 1\", \"action 2\", \"action 3\"]}. IMPORTANT: Do NOT use markdown formatting like ** or * in your response. Each bullet must start with a plain label followed by a colon and a detailed explanation with specific numbers, percentages, and metrics from the data. Example: 'Turnaround Time: Fell to 92% from 99% SLA, with document processing delays increasing by 15% across the pipeline.' Each array must have exactly 3 detailed, metric-driven bullet points. No markdown, no SQL, no tables, no asterisks.";
 
-var currentQueryId = null;
-
-// --- MULTI-LAYER CACHE: tries IndexedDB > localStorage > in-memory ---
-
-var memoryCache = {};
-
-function getCacheKey(id) {
-  return 'lb_v3_' + id + '_' + section + '_' + startDate + '_' + endDate;
-}
-
-function openDB() {
-  return new Promise(function(resolve, reject) {
-    try {
-      var req = indexedDB.open('lb_cache_db', 1);
-      req.onupgradeneeded = function(e) {
-        var db = e.target.result;
-        if (!db.objectStoreNames.contains('cache')) {
-          db.createObjectStore('cache', { keyPath: 'key' });
-        }
-      };
-      req.onsuccess = function(e) { resolve(e.target.result); };
-      req.onerror = function() { resolve(null); };
-    } catch (e) { resolve(null); }
-  });
-}
-
-function idbGet(key) {
-  return openDB().then(function(db) {
-    if (!db) return null;
-    return new Promise(function(resolve) {
-      try {
-        var tx = db.transaction('cache', 'readonly');
-        var store = tx.objectStore('cache');
-        var req = store.get(key);
-        req.onsuccess = function() {
-          var result = req.result;
-          if (result && (Date.now() - result.ts < CACHE_TTL)) {
-            resolve(result.html);
-          } else {
-            resolve(null);
-          }
-        };
-        req.onerror = function() { resolve(null); };
-      } catch (e) { resolve(null); }
-    });
-  });
-}
-
-function idbSet(key, html) {
-  return openDB().then(function(db) {
-    if (!db) return;
-    try {
-      var tx = db.transaction('cache', 'readwrite');
-      var store = tx.objectStore('cache');
-      store.put({ key: key, html: html, ts: Date.now() });
-    } catch (e) {}
-  });
-}
-
-function idbRemove(key) {
-  return openDB().then(function(db) {
-    if (!db) return;
-    try {
-      var tx = db.transaction('cache', 'readwrite');
-      var store = tx.objectStore('cache');
-      store.delete(key);
-    } catch (e) {}
-  });
-}
-
-function lsGet(key) {
-  try {
-    var raw = localStorage.getItem(key);
-    if (!raw) return null;
-    var entry = JSON.parse(raw);
-    if (Date.now() - entry.ts > CACHE_TTL) {
-      localStorage.removeItem(key);
-      return null;
-    }
-    return entry.html;
-  } catch (e) { return null; }
-}
-
-function lsSet(key, html) {
-  try {
-    localStorage.setItem(key, JSON.stringify({ html: html, ts: Date.now() }));
-  } catch (e) {}
-}
-
-function lsRemove(key) {
-  try { localStorage.removeItem(key); } catch (e) {}
-}
-
-function cacheGet(key) {
-  if (memoryCache[key] && (Date.now() - memoryCache[key].ts < CACHE_TTL)) {
-    return Promise.resolve(memoryCache[key].html);
+function init() {
+  if (queryId && QUERIES[queryId]) {
+    runQuery(queryId);
+  } else {
+    document.getElementById('summaryText').innerHTML = '<div class="error-text">No query configured.</div>';
   }
-
-  var lsResult = lsGet(key);
-  if (lsResult) {
-    memoryCache[key] = { html: lsResult, ts: Date.now() };
-    return Promise.resolve(lsResult);
-  }
-
-  return idbGet(key).then(function(html) {
-    if (html) {
-      memoryCache[key] = { html: html, ts: Date.now() };
-      lsSet(key, html);
-    }
-    return html;
-  });
-}
-
-function cacheSet(key, html) {
-  memoryCache[key] = { html: html, ts: Date.now() };
-  lsSet(key, html);
-  idbSet(key, html);
-}
-
-function cacheClear(key) {
-  delete memoryCache[key];
-  lsRemove(key);
-  idbRemove(key);
-}
-
-// --- END CACHE ---
-
-if (queryId && QUERIES[queryId]) {
-  currentQueryId = queryId;
-  runQuery(queryId);
-} else {
-  document.getElementById('summaryText').innerHTML = '<div class="error-text">No query configured.</div>';
 }
 
 function showSkeleton() {
   var cfg = SECTION_CONFIG[section];
-  var el = document.getElementById('summaryText');
-  el.innerHTML =
+  document.getElementById('summaryText').innerHTML =
     '<div class="card ' + cfg.cardClass + '">' +
       '<div class="card-header">' + cfg.icon +
         '<span class="card-title ' + cfg.titleClass + '">' + cfg.title + '</span>' +
@@ -353,21 +230,13 @@ function showSkeleton() {
 
 async function runQuery(id) {
   var q = QUERIES[id];
-  var cacheKey = getCacheKey(id);
-
-  var cached = await cacheGet(cacheKey);
-  if (cached) {
-    document.getElementById('summaryText').innerHTML = cached;
-    return;
-  }
-
   showSkeleton();
 
   try {
     var res = await fetch(SNOWFLAKE_URL + AGENT_PATH, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + PAT,
+        "Authorization": "Bearer " + 'eyJraWQiOiI5MzcyNjA2OTQ3MzU5NTQiLCJhbGciOiJFUzI1NiJ9.eyJwIjoiMTQzMDE0NjUwMTM6MTQzMDE0NjY3NTciLCJpc3MiOiJTRjoxMDQzIiwiZXhwIjoxNzgxMTE4MjQ3fQ.JbOjs_9FuHuB7AfTbAgtcQAgx_tAfm5JYI2UvF-X0ggKcBC0Hi3F12eS-wF31jobIcXYeZETIlstNPKybOAKjA',
         "Content-Type": "application/json",
         "Accept": "application/json"
       },
@@ -379,23 +248,14 @@ async function runQuery(id) {
     if (!res.ok) throw new Error("API " + res.status);
     var data = await res.json();
     var html = extractSection(data);
-    var result = html || buildEmptyState();
-
-    cacheSet(cacheKey, result);
-
-    document.getElementById('summaryText').innerHTML = result;
+    document.getElementById('summaryText').innerHTML = html || buildEmptyState();
   } catch (err) {
     document.getElementById('summaryText').innerHTML =
       '<div class="error-text">' +
         '<span>Error: ' + esc(err.message) + '</span>' +
-        '<button class="retry-btn" onclick="clearAndRetry(\'' + id + '\')">Retry</button>' +
+        '<button class="retry-btn" onclick="runQuery(\'' + id + '\')">Retry</button>' +
       '</div>';
   }
-}
-
-function clearAndRetry(id) {
-  cacheClear(getCacheKey(id));
-  runQuery(id);
 }
 
 function extractSection(data) {
@@ -436,24 +296,17 @@ function buildCard(cfg, items) {
   html += '<div class="card-header">' + cfg.icon;
   html += '<span class="card-title ' + cfg.titleClass + '">' + cfg.title + '</span>';
   html += '<span class="card-count ' + cfg.countClass + '">' + items.length + '</span>';
-  html += '</div>';
-  html += '<ul>';
+  html += '</div><ul>';
   for (var i = 0; i < items.length; i++) {
     var rawText = typeof items[i] === 'object' ? items[i].text || '' : String(items[i]);
     rawText = cleanMarkdown(rawText);
     var text = esc(rawText);
-
     text = highlightMetrics(text);
-
     var colonIdx = text.indexOf(':');
     if (colonIdx > 0 && colonIdx < 60) {
       text = '<strong>' + text.substring(0, colonIdx) + '</strong>:' + text.substring(colonIdx + 1);
     }
-
-    html += '<li>';
-    html += '<span class="status-dot ' + cfg.dotClass + '"></span>';
-    html += '<span>' + text + '</span>';
-    html += '</li>';
+    html += '<li><span class="status-dot ' + cfg.dotClass + '"></span><span>' + text + '</span></li>';
   }
   html += '</ul></div>';
   return html;
@@ -461,12 +314,9 @@ function buildCard(cfg, items) {
 
 function buildEmptyState() {
   var cfg = SECTION_CONFIG[section];
-  return '<div class="card ' + cfg.cardClass + '">' +
-    '<div class="card-header">' + cfg.icon +
-      '<span class="card-title ' + cfg.titleClass + '">' + cfg.title + '</span>' +
-    '</div>' +
-    '<p style="padding:22px;font-size:18px;color:#6b7280;">No data available for this period.</p>' +
-  '</div>';
+  return '<div class="card ' + cfg.cardClass + '"><div class="card-header">' + cfg.icon +
+    '<span class="card-title ' + cfg.titleClass + '">' + cfg.title + '</span></div>' +
+    '<p style="padding:22px;font-size:18px;color:#6b7280;">No data available for this period.</p></div>';
 }
 
 function highlightMetrics(text) {
