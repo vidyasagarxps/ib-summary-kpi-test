@@ -138,7 +138,7 @@ html, body {
 var SW_READY = false;
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(reg) {
+  navigator.serviceWorker.register('/lb-summary-kpi-test/sw.js', { scope: '/lb-summary-kpi-test/' }).then(function(reg) {
     if (reg.active) {
       SW_READY = true;
       init();
