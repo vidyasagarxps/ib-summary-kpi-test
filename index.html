@@ -135,32 +135,11 @@ html, body {
 <body>
 <div class="wrapper" id="summaryText"></div>
 <script>
-var SW_READY = false;
-
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/lb-summary-kpi-test/sw.js', { scope: '/lb-summary-kpi-test/' }).then(function(reg) {
-    if (reg.active) {
-      SW_READY = true;
-      init();
-    } else {
-      var worker = reg.installing || reg.waiting;
-      worker.addEventListener('statechange', function() {
-        if (worker.state === 'activated') {
-          SW_READY = true;
-          init();
-        }
-      });
-    }
-  }).catch(function() {
-    init();
-  });
-} else {
-  init();
-}
+var CACHE_TTL = 5 * 60 * 1000;
 
 var SNOWFLAKE_URL = "https://ARXPS-XPANSE.snowflakecomputing.com";
 var AGENT_PATH = "/api/v2/databases/XPS_AID/schemas/LOAN_BOARDING/agents/LB_PBI_AGENT:run";
-var PAT = '';
+var PAT = 'eyJraWQiOiI5MzcyNjA2OTQ3MzU5NTQiLCJhbGciOiJFUzI1NiJ9.eyJwIjoiMTQzMDE0NjUwMTM6MTQzMDE0NjY3NTciLCJpc3MiOiJTRjoxMDQzIiwiZXhwIjoxNzgxMTE4MjQ3fQ.JbOjs_9FuHuB7AfTbAgtcQAgx_tAfm5JYI2UvF-X0ggKcBC0Hi3F12eS-wF31jobIcXYeZETIlstNPKybOAKjA',
 
 var QUERIES = {
   exec_summary:  { label: "Executive Summary",              question: "Executive Summary" },
@@ -205,6 +184,34 @@ if (startDate && endDate) {
 
 var SUMMARY_PROMPT = DATE_FILTER + " — Respond in EXACTLY this JSON format with no other text: {\"insights\": [\"insight 1\", \"insight 2\", \"insight 3\"], \"risks\": [\"risk 1\", \"risk 2\", \"risk 3\"], \"actions\": [\"action 1\", \"action 2\", \"action 3\"]}. IMPORTANT: Do NOT use markdown formatting like ** or * in your response. Each bullet must start with a plain label followed by a colon and a detailed explanation with specific numbers, percentages, and metrics from the data. Example: 'Turnaround Time: Fell to 92% from 99% SLA, with document processing delays increasing by 15% across the pipeline.' Each array must have exactly 3 detailed, metric-driven bullet points. No markdown, no SQL, no tables, no asterisks.";
 
+function getCacheKey(id) {
+  return 'cortex_' + id + '_' + section + '_' + startDate + '_' + endDate;
+}
+
+function getCached(id) {
+  try {
+    var item = localStorage.getItem(getCacheKey(id));
+    if (!item) return null;
+    var parsed = JSON.parse(item);
+    if (Date.now() - parsed.timestamp > CACHE_TTL) {
+      localStorage.removeItem(getCacheKey(id));
+      return null;
+    }
+    return parsed.data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setCache(id, data) {
+  try {
+    localStorage.setItem(getCacheKey(id), JSON.stringify({
+      data: data,
+      timestamp: Date.now()
+    }));
+  } catch (e) {}
+}
+
 function init() {
   if (queryId && QUERIES[queryId]) {
     runQuery(queryId);
@@ -229,6 +236,13 @@ function showSkeleton() {
 }
 
 async function runQuery(id) {
+  var cached = getCached(id);
+  if (cached) {
+    var html = extractSection(cached);
+    document.getElementById('summaryText').innerHTML = html || buildEmptyState();
+    return;
+  }
+
   var q = QUERIES[id];
   showSkeleton();
 
@@ -236,7 +250,7 @@ async function runQuery(id) {
     var res = await fetch(SNOWFLAKE_URL + AGENT_PATH, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + 'eyJraWQiOiI5MzcyNjA2OTQ3MzU5NTQiLCJhbGciOiJFUzI1NiJ9.eyJwIjoiMTQzMDE0NjUwMTM6MTQzMDE0NjY3NTciLCJpc3MiOiJTRjoxMDQzIiwiZXhwIjoxNzgxMTE4MjQ3fQ.JbOjs_9FuHuB7AfTbAgtcQAgx_tAfm5JYI2UvF-X0ggKcBC0Hi3F12eS-wF31jobIcXYeZETIlstNPKybOAKjA',
+        "Authorization": "Bearer " + 'pat',
         "Content-Type": "application/json",
         "Accept": "application/json"
       },
@@ -247,6 +261,7 @@ async function runQuery(id) {
     });
     if (!res.ok) throw new Error("API " + res.status);
     var data = await res.json();
+    setCache(id, data);
     var html = extractSection(data);
     document.getElementById('summaryText').innerHTML = html || buildEmptyState();
   } catch (err) {
@@ -328,6 +343,8 @@ function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+init();
 </script>
 </body>
 </html>
