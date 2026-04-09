@@ -1,45 +1,47 @@
-var CACHE_NAME = 'lb-agent-cache-v1';
-var CACHE_TTL = 30 * 60 * 1000;
+const CACHE_NAME = 'cortex-cache-v1';
 
-self.addEventListener('install', function(e) {
+self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-self.addEventListener('activate', function(e) {
-  e.waitUntil(self.clients.claim());
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((names) => {
+      return Promise.all(
+        names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))
+      );
+    }).then(() => self.clients.claim())
+  );
 });
 
-self.addEventListener('fetch', function(e) {
-  var url = e.request.url;
-  if (url.indexOf('/agents/') === -1 || url.indexOf(':run') === -1) {
+self.addEventListener('fetch', (event) => {
+  if (!event.request.url.includes('/api/v2/cortex/agent')) {
     return;
   }
 
-  e.respondWith(
-    e.request.clone().text().then(function(body) {
-      var cacheKey = new Request(url + '?_body=' + encodeURIComponent(body));
+  if (event.request.method !== 'POST') {
+    return;
+  }
 
-      return caches.open(CACHE_NAME).then(function(cache) {
-        return cache.match(cacheKey).then(function(cached) {
+  const requestClone = event.request.clone();
+
+  event.respondWith(
+    requestClone.text().then((body) => {
+      const cacheKey = new Request(event.request.url + '?body=' + encodeURIComponent(body), {
+        method: 'GET'
+      });
+
+      return caches.open(CACHE_NAME).then((cache) => {
+        return cache.match(cacheKey).then((cached) => {
           if (cached) {
-            var tsHeader = cached.headers.get('x-cache-ts');
-            if (tsHeader && (Date.now() - parseInt(tsHeader)) < CACHE_TTL) {
-              return cached;
-            }
+            return cached;
           }
-          return fetch(e.request).then(function(response) {
-            var cloned = response.clone();
-            var headers = new Headers(cloned.headers);
-            headers.set('x-cache-ts', String(Date.now()));
-            return cloned.blob().then(function(blob) {
-              var cachedResponse = new Response(blob, {
-                status: cloned.status,
-                statusText: cloned.statusText,
-                headers: headers
-              });
-              cache.put(cacheKey, cachedResponse);
-              return response;
-            });
+
+          return fetch(event.request).then((response) => {
+            if (response.ok) {
+              cache.put(cacheKey, response.clone());
+            }
+            return response;
           });
         });
       });
