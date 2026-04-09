@@ -186,6 +186,9 @@ var SECTION_CONFIG = {
   }
 };
 
+var CACHE_TTL = 30 * 60 * 1000;
+var CACHE_PREFIX = 'lb_v2_';
+
 var params = new URLSearchParams(window.location.search);
 var queryId = params.get('q');
 var section = params.get('section') || 'insights';
@@ -202,8 +205,49 @@ var SUMMARY_PROMPT = DATE_FILTER + " — Respond in EXACTLY this JSON format wit
 var currentQueryId = null;
 
 function getCacheKey(id) {
-  return 'lb_cache_' + id + '_' + section + '_' + startDate + '_' + endDate;
+  return CACHE_PREFIX + id + '_' + section + '_' + startDate + '_' + endDate;
 }
+
+function getCache(key) {
+  try {
+    var raw = localStorage.getItem(key);
+    if (!raw) return null;
+    var entry = JSON.parse(raw);
+    if (Date.now() - entry.ts > CACHE_TTL) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return entry.html;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setCache(key, html) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ html: html, ts: Date.now() }));
+  } catch (e) {}
+}
+
+function clearOldCache() {
+  try {
+    var keys = Object.keys(localStorage);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf(CACHE_PREFIX) === 0) {
+        try {
+          var entry = JSON.parse(localStorage.getItem(keys[i]));
+          if (Date.now() - entry.ts > CACHE_TTL) {
+            localStorage.removeItem(keys[i]);
+          }
+        } catch (e) {
+          localStorage.removeItem(keys[i]);
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+clearOldCache();
 
 if (queryId && QUERIES[queryId]) {
   currentQueryId = queryId;
@@ -232,7 +276,7 @@ async function runQuery(id) {
   var q = QUERIES[id];
   var cacheKey = getCacheKey(id);
 
-  var cached = sessionStorage.getItem(cacheKey);
+  var cached = getCache(cacheKey);
   if (cached) {
     document.getElementById('summaryText').innerHTML = cached;
     return;
@@ -258,7 +302,7 @@ async function runQuery(id) {
     var html = extractSection(data);
     var result = html || buildEmptyState();
 
-    sessionStorage.setItem(cacheKey, result);
+    setCache(cacheKey, result);
 
     document.getElementById('summaryText').innerHTML = result;
   } catch (err) {
@@ -271,7 +315,7 @@ async function runQuery(id) {
 }
 
 function clearAndRetry(id) {
-  sessionStorage.removeItem(getCacheKey(id));
+  try { localStorage.removeItem(getCacheKey(id)); } catch (e) {}
   runQuery(id);
 }
 
